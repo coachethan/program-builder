@@ -22,7 +22,7 @@ const DAY_OPTIONS = [
   { value: "4", label: "4 days", sublabel: "Upper / Lower" }
 ];
 
-const PRIORITY_OPTIONS: { value: string; label: string }[] = [
+   const PRIORITY_OPTIONS: { value: string; label: string; sublabel?: string }[] = [
   { value: "chest", label: "Chest" },
   { value: "back", label: "Back" },
   { value: "shoulders", label: "Shoulders" },
