@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSession, signIn } from "next-auth/react";
 import { Program, ProgramExercise } from "@/lib/programGenerator";
 
 interface ReviewExportProps {
@@ -6,12 +10,60 @@ interface ReviewExportProps {
   onBack: () => void;
 }
 
+// Survives the full-page redirect to Google and back (React state doesn't) - a plain flag saying
+// "the user already clicked export before signing in, so run it automatically once we're back."
+const PENDING_EXPORT_KEY = "programBuilderPendingExport";
+
 function priorityLabel(priorities: string[]): string {
   if (priorities.length === 0) return "None";
-  return priorities.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" + ");
+  return priorities.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" + ");
 }
 
 export default function ReviewExport({ program, workouts, onBack }: ReviewExportProps) {
+  const { status } = useSession();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportedUrl, setExportedUrl] = useState<string | null>(null);
+
+  async function runExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const res = await fetch("/api/export-to-sheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ program, workouts })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Export failed.");
+      setExportedUrl(data.spreadsheetUrl);
+      window.open(data.spreadsheetUrl, "_blank");
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Coming back from a Google sign-in redirect with a pending export flagged? Run it now,
+  // automatically - the user already clicked "export" once, they shouldn't have to click again.
+  useEffect(() => {
+    if (status === "authenticated" && sessionStorage.getItem(PENDING_EXPORT_KEY) === "1") {
+      sessionStorage.removeItem(PENDING_EXPORT_KEY);
+      runExport();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  function handleExportClick() {
+    if (status === "authenticated") {
+      runExport();
+    } else {
+      sessionStorage.setItem(PENDING_EXPORT_KEY, "1");
+      signIn("google");
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -73,17 +125,31 @@ export default function ReviewExport({ program, workouts, onBack }: ReviewExport
         ))}
       </div>
 
-      <button
-        type="button"
-        disabled
-        title="Coming soon"
-        className="w-full rounded-control bg-emerald-fill/40 text-white/70 font-semibold px-6 py-3.5 cursor-not-allowed flex items-center justify-center gap-2"
-      >
-        Export to Google Sheets
-        <span className="text-[10px] uppercase tracking-wider bg-bg/30 rounded-full px-2 py-0.5">
-          Coming soon
-        </span>
-      </button>
+      {exportError && <p className="text-amber text-sm mb-3">{exportError}</p>}
+
+      {exportedUrl ? (
+        
+          href={exportedUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="w-full block text-center rounded-control bg-emerald-fill text-white font-semibold px-6 py-3.5 hover:brightness-110 transition"
+        >
+          Open your spreadsheet
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={handleExportClick}
+          disabled={exporting || status === "loading"}
+          className="w-full rounded-control bg-emerald-fill text-white font-semibold px-6 py-3.5 hover:brightness-110 transition disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {exporting
+            ? "Exporting..."
+            : status === "authenticated"
+            ? "Export to Google Sheets"
+            : "Sign in with Google to export"}
+        </button>
+      )}
     </div>
   );
 }
