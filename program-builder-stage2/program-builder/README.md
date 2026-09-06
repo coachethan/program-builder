@@ -73,6 +73,37 @@ tests/
   programGenerator.test.ts
 ```
 
+## Google Sheets export (new)
+
+Real Google sign-in + Sheets export is implemented, using NextAuth.js v4 (the current stable,
+`latest`-tagged version — Auth.js v5 is the eventual successor but still ships under the `beta`
+npm tag, so v4 was the safer choice to hand-author without a live install to verify against).
+
+**Setup required before this works:**
+1. Copy `.env.local.example` to `.env.local` and fill in all four values (Google Cloud Console
+   credentials + a generated `NEXTAUTH_SECRET` + your site's URL).
+2. In Google Cloud Console, the OAuth client's Authorized redirect URI must be exactly
+   `<your-site-url>/api/auth/callback/google`.
+3. Add the same four variables in Vercel -> Settings -> Environment Variables for production.
+
+**What's verified:** `lib/googleSheetsExport.ts`'s `buildProgramRows()` — the pure function that
+turns a generated program into a spreadsheet-ready grid — has a real, passing Jest test suite
+(`tests/googleSheetsExport.test.ts`, 7/7 passing, run via the same shim technique as the rest of
+this project).
+
+**What's NOT verified (needs a live environment with real credentials):** the actual OAuth
+round-trip (sign-in, redirect, callback) and the two live calls to the Google Sheets REST API.
+This sandbox has no network access, so none of that could be exercised against the real Google
+APIs. Test this for real before trusting it in front of users — click "Export to Google Sheets,"
+sign in, and confirm a spreadsheet actually appears in that Google account's Drive with the
+program data correctly filled in.
+
+**How the flow works:** clicking export either calls the export API directly (if already signed
+in) or saves a "pending export" flag to `sessionStorage` and redirects to Google sign-in first —
+sessionStorage is what survives the full-page redirect that React state can't. On return, a
+`useEffect` sees the pending flag and the now-authenticated session, and completes the export
+automatically without a second click.
+
 ## Not yet built (next stage)
 
 Google OAuth and Google Sheets export — needs real credentials and a live environment.
